@@ -1,0 +1,16 @@
+# Send only the inputs copied by Dockerfile, not local data, credentials, or tooling.
+**
+!LICENSE
+!docs/third-party-notices.md
+!package.json
+!package-lock.json
+!tsconfig.server.json
+!tsconfig.web.json
+!server/
+!server/**
+!web/
+!web/**
+**/.env
+**/.env.*
+**/*.sqlite
+**/*.sqlite-*

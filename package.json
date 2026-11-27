@@ -1,0 +1,37 @@
+{
+  "name": "pokerbot",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=26.12.1"
+  },
+  "scripts": {
+    "dev": "vite web",
+    "dev:server": "node --watch --env-file-if-exists=.env server/index.ts",
+    "build": "tsc --noEmit -p tsconfig.test.json && npm run build:app",
+    "build:app": "tsc --noEmit -p tsconfig.web.json && tsc -p tsconfig.server.json && vite build web",
+    "start": "node --env-file-if-exists=.env dist/server/index.js",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:browser": "node --test --test-concurrency=1 \"e2e/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@fastify/static": "^11.0.0",
+    "@fastify/websocket": "^11.3.7",
+    "fastify": "^5.12.8",
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/react": "^19.3.3",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.3.0",
+    "playwright-core": "^1.65.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "~6.0.3",
+    "vite": "^8.4.0"
+  }
+}

@@ -1,0 +1,85 @@
+name: Release checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  NODE_VERSION: '26.12.1'
+  CHROMIUM_PATH: /usr/bin/google-chrome
+
+jobs:
+  app:
+    name: Build, unit tests, and Chromium
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:browser
+
+  container:
+    name: Linux container smoke and image scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      - name: Smoke-test the container with fake Fluxer
+        env:
+          E2E_TARGET: container
+          E2E_IMAGE_ID_FILE: ${{ runner.temp }}/pokerbot-image-id
+        run: node --test e2e/smoke.test.ts
+      - name: Scan the tested runtime image
+        run: |
+          archive="$RUNNER_TEMP/trivy.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.2/trivy_0.76.2_Linux-64bit.tar.gz
+          printf '%s  %s\n' 'bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf' "$archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$RUNNER_TEMP" trivy
+
+          image_id=$(<"$RUNNER_TEMP/pokerbot-image-id")
+          docker image tag "$image_id" pokerbot:release-check
+          report="$RUNNER_TEMP/runtime-scan.json"
+          "$RUNNER_TEMP/trivy" image --image-src docker --scanners vuln --list-all-pkgs \
+            --format json --output "$report" pokerbot:release-check
+          jq -e --arg id "$image_id" '
+            .Metadata.ImageID == $id and
+            any(.Results[]?; .Class == "os-pkgs" and ((.Packages // []) | length > 0))
+          ' "$report" >/dev/null
+          blockers=$(jq -c '[.Results[]?.Vulnerabilities[]? |
+            select(.Severity == "CRITICAL" or .VulnerabilityID == "CVE-2026-111497")]
+          ' "$report")
+          if [[ "$blockers" != '[]' ]]; then
+            jq -r '.[] | "\(.Severity) \(.VulnerabilityID) \(.PkgName) \(.InstalledVersion) (fixed: \(.FixedVersion // "none"))"' <<<"$blockers"
+            exit 1
+          fi
+          printf 'Scanned %s: no CRITICAL findings or CVE-2026-111497.\n' "$image_id" | tee -a "$GITHUB_STEP_SUMMARY"

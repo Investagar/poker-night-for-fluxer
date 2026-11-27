@@ -1,0 +1,11 @@
+node_modules/
+dist/
+e2e/artifacts/
+/data/
+.env
+.env.*
+!.env.example
+
+# Local planning and agent handoff
+/SPEC.md
+/AGENT-*.md
